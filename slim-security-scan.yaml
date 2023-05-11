@@ -1,0 +1,63 @@
+# This Github Actions pipeline performs the following steps:
+
+# Listens for pushes to the main branch of the repository.
+# Sets up a job to run on an Ubuntu machine.
+# Checks out the code from the repository.
+# Installs SlimToolkit, a tool for optimizing and securing container images.
+# Builds and optimizes the Docker image using the slim build command, specifying the --entrypoint, --http-probe-cmd, and --continue-after flags to customize the Slim optimization process.
+# Scans the Docker image specified by the repository and tag using Trivy.
+# Publishes the optimized Docker image and Trivy scan results to Cloudsmith, a package management platform.
+# Note that you'll need to replace my-dockerhub-username/my-image with the name of your Docker image, and configure the Cloudsmith-related parameters to match your account and repository.
+
+# You'll also need to set up a CLOUDSMITH_API_KEY secret in your Github repository with an API key that has permission to publish packages to your Cloudsmith repository.
+
+# You can save this pipeline as a YAML file (e.g. slim-security-scan.yaml) in the .github/workflows directory of your repository. Github Actions will automatically detect and run this pipeline whenever code is pushed to the main branch of the repository.
+
+name: Slim Toolkit and Security Scan
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  slim:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+      
+    - name: Install SlimToolkit
+      run: |
+        curl https://get.slim.ai | bash
+        export PATH=$PATH:/home/runner/.slim/bin/
+      
+    - name: Build and optimize Docker image with SlimToolkit
+      run: |
+        slim build my-dockerhub-username/my-image:latest --entrypoint="my-app start" --http-probe-cmd="my-app healthcheck" --continue-after="my-app test"
+      
+    - name: Scan Docker image with Trivy
+      run: |
+        trivy --severity HIGH,CRITICAL my-dockerhub-username/my-image:latest
+
+    - name: Publish Docker image to Cloudsmith
+      uses: cloudsmith-io/github-action@v3.5.5
+      with:
+        cloudsmith_api_key: ${{ secrets.CLOUDSMITH_API_KEY }}
+        cloudsmith_repository: my-repo
+        cloudsmith_package_name: my-package
+        cloudsmith_package_version: ${{ github.sha }}
+        file_pattern: |
+          **/*.json
+          **/*.tar
+        source_dir: /path/to/trivy/results
+
+    - name: Publish Trivy results to Cloudsmith
+      uses: cloudsmith-io/github-action@v3.5.5
+      with:
+        cloudsmith_api_key: ${{ secrets.CLOUDSMITH_API_KEY }}
+        cloudsmith_repository: my-repo
+        cloudsmith_package_name: my-package
+        cloudsmith_package_version: ${{ github.sha }}
+        file_pattern: |
+          **/*.json
+        source_dir: /path/to/trivy/results
